@@ -3,50 +3,68 @@
 # SPDX-FileCopyrightText: 2023 ShinagwaKazemaru
 # SPDX-License-Identifier: MIT License
 
-from flask import Flask, g
+from flask import Flask, jsonify
 from sock_client import SockClient
+from db_client import DBClient
+from sqlite3_client import SQLite3Client
 import numpy as np
+from numpy import ndarray
 
 app = Flask(__name__)
 sock_cli:SockClient=None
+db_cli:DBClient=None
 
-@app.route("/echo/<string:s>")
-def echo(s:str):
-    return s
-
-@app.route("/sock_test/<string:s>")
-def sock_test(s:str):
-    res = sock_cli.send_request(s)
-    if res is None:
-        return "<p>だめ</p>"
-    else:
-        return 'res = ' + res.decode()
 
 @app.route("/tr_prob/pretty")
 def tr_prob_pretty():
     res = sock_cli.get_tr_prob()
-    if res is None:
-        return "<p>だめ</p>"
+    if not res[0] == 2:
+        return res[1], 500
     else:
-        return str(np.array(res[1]).reshape((res[0], res[0])))
-    
+        return str(res[2]).replace('\n', '<br>')
+
 
 @app.route('/tr_prob')
 def tr_prob():
-    res = sock_cli.get_tr_prob()
-    if res is None:
-        return "<p>だめ</p>"
+    result = db_cli.get_tr_prob()
+    if result[0] == False:
+        return result[1], 500
     else:
-        n = res[0]
-        if n == 0: return '<p>error in wili_bridge</p>'
-        tr_prob = res[1]
-        ret = []
-        for i in range(n):
-            ss = [str(a) for a in tr_prob[i * n : (i + 1) * n]]
-            ret.append(','.join(ss))
-        return '\n'.join(ret)
+        ret = {
+            'motion_num': result[1],
+            'tr_prob': result[2].tolist(),
+        }
+        return jsonify(ret)
+
+
+@app.route('/heatmap')
+def heatmap():
+    result = db_cli.get_heatmap()
+    if result[0] == False:
+        return result[1], 500
+    else:
+        ret = {
+            'motion_num': result[1],
+            'avr_gaussian': result[2].tolist(),
+            'var_gaussian': result[3].tolist(),
+        }
+        return jsonify(ret)
+
+
+@app.route('/suggest')
+def suggest():
+    result = sock_cli.call_suggest()
+    if result[0] == False:
+        return result[1], 500
+    else:
+        ret = {
+            'motion_num': result[1],
+            'weight': result[2].tolist(),
+        }
+        return jsonify(ret)
 
 
 if __name__ == "__main__":
     sock_cli = SockClient()
+    db_cli = SQLite3Client('/var/lib/wili/test/db.sqlite3')
     app.run(host="localhost", port=5000)
